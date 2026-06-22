@@ -5,34 +5,65 @@ Emails are automatically classified into **5 containers** — no manual review n
 
 **Containers**: Private, Business, Other Work, Others, Spam
 
-## Quick Start
+**Cost**: $0 — no cloud services, no credit card required.
 
-### 1. Install
+---
+
+## Quick Start (Local)
+
 ```bash
 pip install -r requirements.txt
-```
-
-### 2. Run
-```bash
 python run.py
 ```
-Or double-click `run.bat`.
 
 Open **http://localhost:8000** → Register → Connect Gmail with App Password.
 
+---
+
 ## Share Publicly (Zero Cost, No Credit Card)
 
-Double-click **`start_cloudflare.bat`** — it installs `cloudflared` automatically and creates a public URL like `https://something.trycloudflare.com`. Share that URL with anyone.
+Choose your deployment option:
 
-Works on any machine (Windows/Mac/Linux). No server, no cloud account, no credit card.
+### A) Quick Tunnel — No Account Needed
+
+Random public URL, changes on restart. Takes 30 seconds.
+
+| Platform | Command |
+|----------|---------|
+| **Windows** | Double-click `start_cloudflare.bat` |
+| **Mac / Linux** | `bash deploy/start.sh` |
+| **Docker** | `docker compose -f deploy/docker-compose.yml --profile tunnel up -d` |
+
+**Result:** `https://random-words.trycloudflare.com`
+
+### B) Named Tunnel — Permanent URL (Free Cloudflare Account)
+
+Permanent public URL that survives restarts. Requires free Cloudflare account (no card).
+
+```bash
+cloudflared tunnel login          # browser → sign up (free)
+cloudflared tunnel create ai-email
+cloudflared tunnel route dns ai-email your-name.duckdns.org
+cloudflared tunnel run ai-email
+```
+
+See `deploy/guide.md` for full instructions and config templates.
+
+### C) Tailscale Funnel — One Command
+
+```bash
+tailscale up                      # sign in (free, no card)
+tailscale funnel 8000             # one command
+```
+
+**Result:** `https://machine-name.tailabcdef.ts.net`
+
+---
 
 ## Architecture
 
 ```
 Browser ──HTTPS──► Cloudflare Tunnel ──► FastAPI ──► SQLite
-                          │
-                    No account needed
-                    (trycloudflare.com)
 ```
 
 - **Auth**: Email + password with JWT tokens, bcrypt hashing
@@ -40,7 +71,6 @@ Browser ──HTTPS──► Cloudflare Tunnel ──► FastAPI ──► SQLit
 - **Email**: IMAP (receive) + SMTP (send) via Gmail App Passwords
 - **Sync**: APScheduler auto-polls every 5 minutes
 - **Storage**: SQLite (one file, zero setup)
-- **Cost**: $0 — no cloud services, no credit card required
 
 ## API
 
@@ -55,9 +85,14 @@ Browser ──HTTPS──► Cloudflare Tunnel ──► FastAPI ──► SQLit
 | POST | `/api/compose` | Send email |
 | POST | `/api/reply/{id}` | Reply to email |
 
-## Deploy to Cloud (Optional)
+## Deploy Directory
 
-If you want 24/7 uptime without running your own machine:
-
-- **Render.com** (no credit card): Connect your GitHub repo, use `render.yaml`
-- **Fly.io** (credit card required): Use `fly.toml`
+| File | Purpose |
+|------|---------|
+| `deploy/guide.md` | Full zero-cost deployment guide (all options) |
+| `deploy/start.sh` | Mac/Linux quick tunnel script |
+| `deploy/Dockerfile` | Container image build |
+| `deploy/docker-compose.yml` | Docker deployment with optional cloudflared sidecar |
+| `deploy/cloudflared/config.yml` | Named tunnel configuration template |
+| `deploy/nginx.conf` | Reverse proxy config (optional) |
+| `render.yaml` | Render.com blueprint (optional, requires account) |
