@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p data/raw data/processed data/training data/models
+RUN mkdir -p data
 
 EXPOSE 8000
 

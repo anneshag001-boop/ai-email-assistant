@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 
 class SpamAssassinClient:
     def __init__(self, host: str = "127.0.0.1", port: int = 783, timeout: int = 30):
-        self.host = host or settings.spamassassin_host
-        self.port = port or settings.spamassassin_port
+        self.host = host
+        self.port = port
         self.timeout = timeout
 
     def score(self, subject: str, body: str, sender: str = "",

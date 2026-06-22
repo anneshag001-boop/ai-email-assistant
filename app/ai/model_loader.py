@@ -9,9 +9,9 @@ logger = logging.getLogger(__name__)
 
 class ModelLoader:
     def __init__(self):
-        self.spam_model_path = settings.spam_model_path
-        self.classifier_path = settings.classifier_model_path
-        self.vectorizer_path = settings.vectorizer_path
+        self.spam_model_path = "data/models/spam_model.pkl"
+        self.classifier_path = "data/models/classifier_model.pkl"
+        self.vectorizer_path = "data/models/vectorizer.pkl"
 
     def load_spam_model(self) -> Optional[object]:
         if not os.path.exists(self.spam_model_path):
