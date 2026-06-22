@@ -24,5 +24,5 @@ def reset():
     _seen_hashes.clear()
 
 
-def is_duplicate_in_db(email: NormalizedEmail, repo: EmailRepository) -> bool:
-    return repo.get_email_by_message_id(email.message_id, email.provider) is not None
+def is_duplicate_in_db(email: NormalizedEmail, repo: EmailRepository, user_id: int = 0) -> bool:
+    return repo.get_email_by_message_id(email.message_id, email.provider, user_id=user_id) is not None

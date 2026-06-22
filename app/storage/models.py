@@ -7,12 +7,20 @@ class Base(DeclarativeBase):
     pass
 
 
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), nullable=False, unique=True)
+    password_hash = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
 class EmailRecord(Base):
     __tablename__ = "email_records"
-
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     provider = Column(String(50), nullable=False)
-    message_id = Column(String(255), nullable=False, unique=True)
+    message_id = Column(String(255), nullable=False)
     sender = Column(String(255), nullable=False)
     recipients = Column(Text, nullable=True)
     subject = Column(String(512), nullable=True)
@@ -29,8 +37,8 @@ class EmailRecord(Base):
 
 class PredictionRecord(Base):
     __tablename__ = "prediction_records"
-
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     email_id = Column(Integer, ForeignKey("email_records.id"), nullable=False)
     spam_score = Column(Float, default=0.0)
     spam_label = Column(String(20), nullable=True)
@@ -44,8 +52,8 @@ class PredictionRecord(Base):
 
 class FeedbackRecord(Base):
     __tablename__ = "feedback_records"
-
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     email_id = Column(Integer, ForeignKey("email_records.id"), nullable=False)
     old_label = Column(String(50), nullable=True)
     corrected_label = Column(String(50), nullable=False)
@@ -56,9 +64,9 @@ class FeedbackRecord(Base):
 
 class Container(Base):
     __tablename__ = "containers"
-
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), nullable=False, unique=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String(100), nullable=False)
     is_default = Column(Boolean, default=False)
     sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -66,9 +74,9 @@ class Container(Base):
 
 class EmailAccount(Base):
     __tablename__ = "email_accounts"
-
     id = Column(Integer, primary_key=True, autoincrement=True)
-    email = Column(String(255), nullable=False, unique=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    email = Column(String(255), nullable=False)
     smtp_host = Column(String(255), default="smtp.gmail.com")
     smtp_port = Column(Integer, default=587)
     smtp_user = Column(String(255), nullable=True)
@@ -87,8 +95,8 @@ class EmailAccount(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
-
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     email_id = Column(Integer, ForeignKey("email_records.id"), nullable=True)
     event_type = Column(String(50), nullable=False)
     event_payload = Column(JSON, nullable=True)

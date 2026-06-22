@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: ai-email-assistant
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: email-assistant-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: OLLAMA_ENABLED
+        value: "false"
+      - key: GROQ_API_KEY
+        sync: false
+
+databases:
+  - name: email-assistant-db
+    plan: free
+    databaseName: email_assistant
+    user: email_assistant

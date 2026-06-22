@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     postgres_port: int = 5432
     postgres_db: str = "email_assistant"
 
-    # Gmail OAuth2
+    # Gmail OAuth2 (not used — auth is email+password; use IMAP App Passwords instead)
     gmail_client_id: Optional[str] = None
     gmail_client_secret: Optional[str] = None
     gmail_redirect_uri: Optional[str] = None
@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.2:3b"
     ollama_timeout: int = 30
 
+    # Groq Cloud LLM (replaces Ollama in production)
+    groq_api_key: Optional[str] = None
+    groq_model: str = "llama3-8b"
+
     # SMTP for sending emails
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
@@ -61,6 +65,8 @@ class Settings(BaseSettings):
 
     @property
     def effective_database_url(self) -> str:
+        if self.database_url.startswith("postgres"):
+            return self.database_url
         if self.use_postgres:
             return (f"postgresql://{self.postgres_user}:{self.postgres_password}"
                     f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}")

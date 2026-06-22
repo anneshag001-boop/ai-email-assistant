@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Email Assistant — Login</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+        font-family: 'Inter', system-ui, sans-serif;
+        background: #f0f2f5; height:100vh;
+        display:flex; align-items:center; justify-content:center;
+    }
+    .card {
+        background:#fff; border-radius:16px; padding:40px;
+        width:400px; box-shadow:0 2px 10px rgba(0,0,0,0.08);
+    }
+    .logo { font-size:28px; font-weight:700; color:#1a1a1a; margin-bottom:2px; }
+    .logo span { color:#1a73e8; }
+    .sub { font-size:14px; color:#5f6368; margin-bottom:24px; }
+    label { display:block; font-size:13px; font-weight:500; color:#444746; margin-bottom:4px; }
+    input {
+        width:100%; padding:10px 12px;
+        border:1px solid #e0e0e0; border-radius:8px;
+        font-family:inherit; font-size:14px; outline:none;
+        margin-bottom:16px; transition:border-color 0.12s;
+    }
+    input:focus { border-color:#1a73e8; }
+    button {
+        width:100%; padding:12px; border:none; border-radius:8px;
+        background:#1a73e8; color:#fff; font-family:inherit;
+        font-size:15px; font-weight:500; cursor:pointer; transition:background 0.12s;
+    }
+    button:hover { background:#1557b0; }
+    button:disabled { opacity:0.6; cursor:not-allowed; }
+    .toggle { font-size:13px; text-align:center; margin-top:16px; color:#5f6368; }
+    .toggle a { color:#1a73e8; cursor:pointer; text-decoration:none; }
+    .toggle a:hover { text-decoration:underline; }
+    .error { color:#d93025; font-size:13px; margin-bottom:12px; display:none; background:#fce8e6; padding:8px 12px; border-radius:6px; }
+    .register-only { display:none; }
+    .mode-register .register-only { display:block; }
+    .mode-register .login-only { display:none; }
+</style>
+</head>
+<body>
+<div class="card" id="auth-card">
+    <div class="logo"><span>AI</span> Email</div>
+    <div class="sub" id="mode-sub">Sign in to your account</div>
+    <div class="error" id="error-msg"></div>
+    <form id="auth-form" onsubmit="return handleAuth(event)">
+        <label>Email</label>
+        <input type="email" id="email" placeholder="you@example.com" required autocomplete="email">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="Enter password" required minlength="6" autocomplete="current-password">
+        <div class="register-only">
+            <label>Confirm Password</label>
+            <input type="password" id="confirm-password" placeholder="Confirm password" autocomplete="new-password">
+            <div style="margin:16px 0 4px;font-size:13px;font-weight:600;color:#444746;">Connect Gmail (optional)</div>
+            <label style="font-size:12px;color:#5f6368;margin-bottom:8px;">Enter your Gmail App Password to auto-connect your email for IMAP sync &amp; sending.</label>
+            <label>Gmail Address</label>
+            <input type="email" id="gmail-email" placeholder="you@gmail.com">
+            <label>Gmail App Password</label>
+            <input type="password" id="gmail-app-pass" placeholder="16-character app password">
+        </div>
+        <button type="submit" id="auth-btn">Sign In</button>
+    </form>
+    <div class="toggle">
+        <span class="login-only">Don't have an account? <a onclick="toggleMode()">Register</a></span>
+        <span class="register-only">Already have an account? <a onclick="toggleMode()">Sign In</a></span>
+    </div>
+</div>
+<script>
+var isRegister = false;
+function toggleMode() {
+    isRegister = !isRegister;
+    document.getElementById('auth-card').classList.toggle('mode-register', isRegister);
+    document.getElementById('auth-btn').innerText = isRegister ? 'Register' : 'Sign In';
+    document.getElementById('mode-sub').innerText = isRegister ? 'Create a new account' : 'Sign in to your account';
+}
+async function handleAuth(e) {
+    e.preventDefault();
+    var btn = document.getElementById('auth-btn');
+    var errorEl = document.getElementById('error-msg');
+    errorEl.style.display = 'none';
+    var email = document.getElementById('email').value;
+    var password = document.getElementById('password').value;
+    if (isRegister) {
+        var conf = document.getElementById('confirm-password').value;
+        if (password !== conf) { errorEl.innerText = 'Passwords do not match'; errorEl.style.display = 'block'; return false; }
+    }
+    btn.disabled = true; btn.innerText = 'Please wait...';
+    var endpoint = isRegister ? '/auth/register' : '/auth/login';
+    var body = {email, password};
+    if (isRegister) {
+        body.gmail_email = document.getElementById('gmail-email').value;
+        body.gmail_app_password = document.getElementById('gmail-app-pass').value;
+    }
+    try {
+        var r = await fetch(endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+        var data = await r.json();
+        if (r.ok) {
+            localStorage.setItem('token', data.access_token);
+            window.location.href = '/dashboard?token=' + encodeURIComponent(data.access_token);
+        } else {
+            errorEl.innerText = data.detail || 'Authentication failed';
+            errorEl.style.display = 'block';
+            btn.disabled = false; btn.innerText = isRegister ? 'Register' : 'Sign In';
+        }
+    } catch(e) {
+        errorEl.innerText = 'Network error: ' + e.message;
+        errorEl.style.display = 'block';
+        btn.disabled = false; btn.innerText = isRegister ? 'Register' : 'Sign In';
+    }
+    return false;
+}
+// Auto-redirect if token exists
+var t = localStorage.getItem('token');
+if (t) {
+    fetch('/auth/me', {headers:{'Authorization':'Bearer '+t}})
+        .then(function(r){ if(r.ok) window.location.href='/dashboard?token='+encodeURIComponent(t); })
+        .catch(function(){});
+}
+</script>
+</body>
+</html>

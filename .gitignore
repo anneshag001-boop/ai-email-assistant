@@ -1,32 +1,11 @@
-# Python
 __pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
-*.egg
-.pytest_cache/
-*.db
-*.sqlite
-*.sqlite3
-
-# Environment
+*.pyc
 .env
-.venv/
-venv/
-env/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Project
+data/email_assistant.db
+data/raw/
+data/processed/
+data/training/
+data/models/
+*.pid
 server.log
-data/*.db
-data/models/*.pkl
+.venv/

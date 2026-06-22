@@ -1,65 +1,82 @@
-from fastapi import APIRouter, Query, HTTPException
-from fastapi.responses import RedirectResponse, HTMLResponse
-from app.core.auth import (
-    get_gmail_oauth_url, get_outlook_oauth_url,
-    exchange_gmail_code, exchange_outlook_code,
+import os
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.storage.db import get_db
+from app.storage.models import User
+from app.core.security import (
+    verify_password, hash_password, create_access_token,
+    get_current_user, require_user, decode_access_token,
 )
-from app.storage.db import SessionLocal
-from app.storage.repository import AccountRepository, AuditLogRepository
-import json
+from app.storage.repository import ContainerRepository, AccountRepository
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-OAUTH_SUCCESS_PAGE = """
-<!DOCTYPE html>
-<html><body style="font-family:sans-serif;padding:40px;text-align:center">
-<h2 style="color:#1a73e8">OAuth2 Authorization Successful</h2>
-<p>Your Google account has been connected. You can close this tab or <a href="/dashboard" style="color:#1a73e8">return to dashboard</a>.</p>
-<script>setTimeout(function(){ window.location.href='/dashboard'; }, 2000);</script>
-</body></html>
-"""
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+templates = Jinja2Templates(directory=os.path.join(base_dir, "templates"))
 
 
-@router.get("/gmail/login")
-def gmail_login(email: str = Query("")):
-    url = get_gmail_oauth_url(state=email)
-    return RedirectResponse(url)
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    gmail_email: Optional[str] = None
+    gmail_app_password: Optional[str] = None
 
 
-@router.get("/gmail/callback")
-def gmail_callback(code: str = Query(...), state: str = Query("")):
-    try:
-        token_data = exchange_gmail_code(code)
-        token_json = json.dumps(token_data)
+class LoginRequest(BaseModel):
+    email: str
+    password: str
 
-        db = SessionLocal()
+
+@router.post("/register")
+def register(req: RegisterRequest, db: Session = Depends(get_db)):
+    existing = db.query(User).filter(User.email == req.email).first()
+    if existing:
+        raise HTTPException(400, "Email already registered")
+    if len(req.password) < 6:
+        raise HTTPException(400, "Password must be at least 6 characters")
+    user = User(email=req.email, password_hash=hash_password(req.password))
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    ContainerRepository(db).seed_for_user(user.id)
+    if req.gmail_app_password:
+        gmail = req.gmail_email or req.email
+        AccountRepository(db).create_account(
+            email=gmail,
+            imap_host="imap.gmail.com", imap_port=993, imap_user=gmail,
+            imap_password=req.gmail_app_password, imap_use_ssl=True,
+            smtp_host="smtp.gmail.com", smtp_port=587, smtp_user=gmail,
+            smtp_password=req.gmail_app_password, smtp_use_tls=True,
+            is_default=True, user_id=user.id,
+        )
+    token = create_access_token({"sub": str(user.id)})
+    return {"access_token": token, "token_type": "bearer", "user": {"id": user.id, "email": user.email}}
+
+
+@router.post("/login")
+def login(req: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == req.email).first()
+    if not user or not verify_password(req.password, user.password_hash):
+        raise HTTPException(401, "Invalid email or password")
+    token = create_access_token({"sub": str(user.id)})
+    return {"access_token": token, "token_type": "bearer", "user": {"id": user.id, "email": user.email}}
+
+
+@router.get("/me")
+def me(current_user: User = Depends(require_user)):
+    return {"id": current_user.id, "email": current_user.email}
+
+
+@router.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, token: str = Query("")):
+    if token:
         try:
-            if state:
-                repo = AccountRepository(db)
-                ok = repo.set_gmail_token(state, token_json)
-                if ok:
-                    AuditLogRepository(db).log(
-                        email_id=None, event_type="gmail_oauth_connected",
-                        payload={"email": state},
-                    )
-        finally:
-            db.close()
-
-        return HTMLResponse(content=OAUTH_SUCCESS_PAGE)
-    except Exception as e:
-        raise HTTPException(400, f"Gmail OAuth2 failed: {e}")
-
-
-@router.get("/outlook/login")
-def outlook_login(email: str = Query("")):
-    url = get_outlook_oauth_url()
-    return RedirectResponse(url)
-
-
-@router.get("/outlook/callback")
-def outlook_callback(code: str = Query(...)):
-    try:
-        token_data = exchange_outlook_code(code)
-        return HTMLResponse(content=OAUTH_SUCCESS_PAGE)
-    except Exception as e:
-        raise HTTPException(400, f"Outlook OAuth2 failed: {e}")
+            decode_access_token(token)
+            return RedirectResponse(url="/dashboard")
+        except Exception:
+            pass
+    return templates.TemplateResponse(request=request, name="login.html")

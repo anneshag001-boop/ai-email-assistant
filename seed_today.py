@@ -54,7 +54,7 @@ emails = [
 for sender, subject, body, received, folder in emails:
     msg_id = f"d-{sender.split('@')[0]}-{int(received.timestamp())}"
     rec = EmailRecord(
-        provider="gmail", message_id=msg_id,
+        user_id=1, provider="gmail", message_id=msg_id,
         sender=sender, recipients="hrithik@gmail.com",
         subject=subject, body_text=body,
         received_at=received, ingested_at=now,
@@ -68,7 +68,7 @@ for sender, subject, body, received, folder in emails:
         cat_label = "spam"
         raction = "move_to_trash_after_1d"
     pred = PredictionRecord(
-        email_id=rec.id, spam_score=0.0,
+        user_id=1, email_id=rec.id, spam_score=0.0,
         spam_label="spam" if folder == "Spam" else None,
         category_label=cat_label, category_confidence=0.9,
         priority_score=0.0, routed_folder=rfolder,
@@ -83,7 +83,7 @@ sent = [
 for to, subj, body in sent:
     msg_id = f"st-{int(now.timestamp())}-{to.split('@')[0]}"
     rec = EmailRecord(
-        provider="gmail", message_id=msg_id,
+        user_id=1, provider="gmail", message_id=msg_id,
         sender="hrithik@gmail.com", recipients=to,
         subject=subj, body_text=body,
         received_at=now, ingested_at=now,
@@ -92,7 +92,7 @@ for to, subj, body in sent:
     db.add(rec)
     db.flush()
     pred = PredictionRecord(
-        email_id=rec.id, spam_score=0.0,
+        user_id=1, email_id=rec.id, spam_score=0.0,
         category_label="sent", category_confidence=1.0,
         priority_score=0.0, routed_folder="Sent",
     )

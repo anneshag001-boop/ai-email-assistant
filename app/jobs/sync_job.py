@@ -1,10 +1,7 @@
 import logging
-import base64
 from datetime import datetime
 from typing import Optional
 from sqlalchemy.orm import Session
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
 from app.ingestion import NormalizedEmail
 from app.ingestion.imap_client import IMAPClient
 from app.preprocessing.cleaner import clean_body
@@ -21,19 +18,19 @@ from app.routing.router import route_email
 logger = logging.getLogger(__name__)
 
 
-def process_email(email: NormalizedEmail, db: Session, client: IMAPClient):
+def process_email(email: NormalizedEmail, db: Session, client: IMAPClient, user_id: int = 1):
     email_repo = EmailRepository(db)
     pred_repo = PredictionRepository(db)
     audit = AuditLogRepository(db)
 
-    if is_duplicate_in_db(email, email_repo):
+    if is_duplicate_in_db(email, email_repo, user_id=user_id):
         return False
 
     email = parse_email(email)
     cleaned = clean_body(email.body_text, email.body_html)
 
     saved = email_repo.save_email(EmailRecord(
-        provider=email.provider, message_id=email.message_id,
+        user_id=user_id, provider=email.provider, message_id=email.message_id,
         sender=email.sender, recipients=email.recipients,
         subject=email.subject, body_text=cleaned, body_html=email.body_html,
         received_at=email.received_at, thread_id=email.thread_id,
@@ -51,13 +48,13 @@ def process_email(email: NormalizedEmail, db: Session, client: IMAPClient):
     action = routing["routed_action"]
 
     pred_repo.save_prediction(PredictionRecord(
-        email_id=saved.id, spam_score=spam_score, spam_label=spam_label,
+        user_id=user_id, email_id=saved.id, spam_score=spam_score, spam_label=spam_label,
         category_label=cat_label, category_confidence=confidence,
         priority_score=0.0, routed_folder=target_folder,
         routed_action=action,
     ))
 
-    audit.log(email_id=saved.id, event_type="email_processed",
+    audit.log(email_id=saved.id, user_id=user_id, event_type="email_processed",
               payload={"spam": spam_label, "category": cat_label, "folder": target_folder})
 
     try:
@@ -76,7 +73,7 @@ def process_email(email: NormalizedEmail, db: Session, client: IMAPClient):
     return True
 
 
-def sync_imap(host: str, port: int, username: str, password: str, use_ssl: bool = True, fetch_all: bool = False):
+def sync_imap(host: str, port: int, username: str, password: str, use_ssl: bool = True, fetch_all: bool = False, user_id: int = 1):
     client = IMAPClient(host, port, username, password, use_ssl)
     count = 0
     try:
@@ -85,125 +82,13 @@ def sync_imap(host: str, port: int, username: str, password: str, use_ssl: bool 
         try:
             emails = client.fetch_all() if fetch_all else client.fetch_unseen()
             for email in emails:
-                if process_email(email, db, client):
+                if process_email(email, db, client, user_id=user_id):
                     count += 1
         finally:
             db.close()
     finally:
         client.disconnect()
     return count
-
-
-def sync_gmail_oauth(account_id: int) -> dict:
-    db = SessionLocal()
-    try:
-        repo = AccountRepository(db)
-        account = repo.get_account(account_id)
-        if not account:
-            return {"status": "error", "message": "Account not found"}
-        token_data = repo.get_gmail_token(account_id)
-        if not token_data:
-            return {"status": "error", "message": "Gmail not connected. Authorize first."}
-
-        creds = Credentials(
-            token=token_data.get("token"),
-            refresh_token=token_data.get("refresh_token"),
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=token_data.get("client_id", ""),
-            client_secret=token_data.get("client_secret", ""),
-            expiry=datetime.fromisoformat(token_data["expiry"]) if token_data.get("expiry") else None,
-        )
-
-        from google.auth.transport.requests import Request
-        if creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-
-        service = build("gmail", "v1", credentials=creds)
-        results = service.users().messages().list(userId="me", q="is:unseen", maxResults=50).execute()
-        emails = []
-        for msg_meta in results.get("messages", []):
-            try:
-                msg = service.users().messages().get(userId="me", id=msg_meta["id"], format="full").execute()
-                headers = {h["name"].lower(): h["value"] for h in msg["payload"].get("headers", [])}
-                received_at = None
-                try:
-                    if headers.get("date"):
-                        received_at = datetime.strptime(headers["date"], "%a, %d %b %Y %H:%M:%S %z")
-                except ValueError:
-                    pass
-                body_text, body_html, attachments_count = _extract_gmail_parts(msg["payload"])
-                normalized = NormalizedEmail(
-                    provider="gmail", message_id=headers.get("message-id", msg["id"]),
-                    sender=headers.get("from", ""), recipients=headers.get("to", ""),
-                    subject=headers.get("subject", ""),
-                    body_text=body_text or msg.get("snippet", ""),
-                    body_html=body_html, received_at=received_at,
-                    thread_id=msg.get("threadId", ""),
-                    attachments_count=attachments_count,
-                )
-                emails.append(normalized)
-            except Exception as e:
-                logger.warning("Failed to fetch Gmail msg %s: %s", msg_meta["id"], e)
-
-        count = 0
-        for email in emails:
-            from app.preprocessing.cleaner import clean_body
-            from app.preprocessing.parser import parse_email
-            from app.preprocessing.dedupe import is_duplicate_in_db
-
-            email_repo = EmailRepository(db)
-            if is_duplicate_in_db(email, email_repo):
-                continue
-            email = parse_email(email)
-            cleaned = clean_body(email.body_text, email.body_html)
-            saved = email_repo.save_email(EmailRecord(
-                provider="gmail", message_id=email.message_id,
-                sender=email.sender, recipients=email.recipients,
-                subject=email.subject, body_text=cleaned, body_html=email.body_html,
-                received_at=email.received_at, thread_id=email.thread_id,
-                attachments_count=email.attachments_count,
-            ))
-            spam_score, spam_label, _ = SpamDetector().score(
-                email.subject or "", cleaned, email.sender or "", email.recipients or ""
-            )
-            classifier = EmailClassifier()
-            cat_label, cat_conf = classifier.classify(email.subject or "", cleaned)
-            confidence = compute_confidence(spam_score, cat_conf)
-            routing = route_email(spam_label, cat_label, confidence, 0.0)
-            PredictionRepository(db).save_prediction(PredictionRecord(
-                email_id=saved.id, spam_score=spam_score, spam_label=spam_label,
-                category_label=cat_label, category_confidence=confidence,
-                priority_score=0.0, routed_folder=routing["routed_folder"],
-                routed_action=routing["routed_action"],
-            ))
-            AuditLogRepository(db).log(email_id=saved.id, event_type="email_processed",
-                payload={"spam": spam_label, "category": cat_label, "folder": routing["routed_folder"]})
-            count += 1
-
-        return {"status": "ok", "synced": count}
-    except Exception as e:
-        logger.error("sync_gmail_oauth(%d) failed: %s", account_id, str(e))
-        return {"status": "error", "message": str(e)}
-    finally:
-        db.close()
-
-
-def _extract_gmail_parts(payload: dict):
-    import base64
-    mime_type = payload.get("mimeType", "")
-    data = payload.get("body", {}).get("data", "")
-    body_text = body_html = ""
-    attachments_count = 1 if payload.get("filename") else 0
-    if mime_type == "text/plain" and data:
-        body_text += base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
-    elif mime_type == "text/html" and data:
-        body_html += base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
-    for part in payload.get("parts", []):
-        bt, bh, ac = _extract_gmail_parts(part)
-        body_text += bt
-        body_html += bh
-        attachments_count += ac
-    return body_text, body_html, attachments_count
 
 
 def sync_account(account_id: int) -> dict:
@@ -215,17 +100,15 @@ def sync_account(account_id: int) -> dict:
             return {"status": "error", "message": "Account not found"}
         if not account.imap_host or not account.imap_password:
             return {"status": "error", "message": "IMAP not configured for this account"}
-
+        user_id = account.user_id or 1
         password = repo.decrypt_password(account.imap_password)
         imap_user = account.imap_user or account.email
 
         count = sync_imap(
-            host=account.imap_host,
-            port=account.imap_port,
-            username=imap_user,
-            password=password,
-            use_ssl=account.imap_use_ssl,
-            fetch_all=False,
+            host=account.imap_host, port=account.imap_port,
+            username=imap_user, password=password,
+            use_ssl=account.imap_use_ssl, fetch_all=False,
+            user_id=user_id,
         )
         return {"status": "ok", "synced": count}
     except Exception as e:

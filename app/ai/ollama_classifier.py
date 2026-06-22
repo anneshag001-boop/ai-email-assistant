@@ -31,7 +31,7 @@ class OllamaClassifier:
         self.timeout = timeout or settings.ollama_timeout
         self._base_url = f"http://{self.host}:{self.port}"
 
-    def classify(self, subject: str, body_text: str) -> Tuple[str, float]:
+    def classify(self, subject: str, body_text: str, body_html: str = None) -> Tuple[str, float]:
         prompt = CLASSIFICATION_PROMPT.format(
             subject=subject or "(no subject)",
             body=(body_text or "(no body)")[:2000]

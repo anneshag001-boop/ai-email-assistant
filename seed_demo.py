@@ -7,7 +7,7 @@ from app.storage.repository import ContainerRepository
 db = next(get_db())
 
 container_repo = ContainerRepository(db)
-containers = {c.name: c.id for c in container_repo.list_all()}
+containers = {c.name: c.id for c in container_repo.list_all(user_id=1)}
 
 def classify(subject, body):
     text = (subject + " " + body).lower()
@@ -68,16 +68,15 @@ for e in emails:
     container_id = containers.get(folder)
     msg_id = f"demo-{e['sender'].split('@')[0]}-{int(e['received_at'].timestamp())}"
     record = EmailRecord(
-        provider="gmail", message_id=msg_id,
+        user_id=1, provider="gmail", message_id=msg_id,
         sender=e["sender"], recipients="me@gmail.com",
         subject=e["subject"], body_text=e["body"],
         received_at=e["received_at"], ingested_at=datetime.utcnow(),
     )
     db.add(record)
     db.flush()
-    # Create prediction record so dashboard shows correct routed_folder
     pred = PredictionRecord(
-        email_id=record.id, spam_score=0.0,
+        user_id=1, email_id=record.id, spam_score=0.0,
         category_label=folder, category_confidence=0.9,
         priority_score=0.0, routed_folder=folder,
     )
@@ -92,7 +91,7 @@ sent = [
 for to, subj, body in sent:
     msg_id = f"sent-demo-{int(datetime.utcnow().timestamp())}-{to.split('@')[0]}"
     record = EmailRecord(
-        provider="gmail", message_id=msg_id,
+        user_id=1, provider="gmail", message_id=msg_id,
         sender="hrithik@gmail.com", recipients=to,
         subject=subj, body_text=body,
         received_at=datetime.utcnow(), ingested_at=datetime.utcnow(),
@@ -101,7 +100,7 @@ for to, subj, body in sent:
     db.add(record)
     db.flush()
     pred = PredictionRecord(
-        email_id=record.id, spam_score=0.0,
+        user_id=1, email_id=record.id, spam_score=0.0,
         category_label="sent", category_confidence=1.0,
         priority_score=0.0, routed_folder="Sent",
     )

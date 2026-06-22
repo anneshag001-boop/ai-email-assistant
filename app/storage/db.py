@@ -14,6 +14,7 @@ SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 def init_db():
     Base.metadata.create_all(bind=engine)
     _migrate_existing_db()
+    _seed_first_user()
     from app.storage.repository import seed_default_containers
     db = SessionLocal()
     try:
@@ -22,39 +23,69 @@ def init_db():
         db.close()
 
 
+def _seed_first_user():
+    db = SessionLocal()
+    try:
+        from app.storage.models import User
+        from app.core.security import hash_password
+        existing = db.query(User).count()
+        if existing == 0:
+            user = User(email="admin@localhost", password_hash=hash_password("admin123"))
+            db.add(user)
+            db.commit()
+    finally:
+        db.close()
+
+
 def _migrate_existing_db():
     conn = engine.connect()
     inspector = inspect(conn)
-    er_cols = [c["name"] for c in inspector.get_columns("email_records")]
-    if "is_sent" not in er_cols:
-        conn.execute(text("ALTER TABLE email_records ADD COLUMN is_sent BOOLEAN DEFAULT 0"))
-        conn.commit()
-    if "in_reply_to_id" not in er_cols:
-        conn.execute(text("ALTER TABLE email_records ADD COLUMN in_reply_to_id INTEGER REFERENCES email_records(id)"))
-        conn.commit()
 
-    ea_cols = [c["name"] for c in inspector.get_columns("email_accounts")]
-    if "imap_host" not in ea_cols:
-        conn.execute(text("ALTER TABLE email_accounts ADD COLUMN imap_host VARCHAR(255) DEFAULT 'imap.gmail.com'"))
-        conn.commit()
-    if "imap_port" not in ea_cols:
-        conn.execute(text("ALTER TABLE email_accounts ADD COLUMN imap_port INTEGER DEFAULT 993"))
-        conn.commit()
-    if "imap_user" not in ea_cols:
-        conn.execute(text("ALTER TABLE email_accounts ADD COLUMN imap_user VARCHAR(255)"))
-        conn.commit()
-    if "imap_password" not in ea_cols:
-        conn.execute(text("ALTER TABLE email_accounts ADD COLUMN imap_password VARCHAR(255)"))
-        conn.commit()
-    if "imap_use_ssl" not in ea_cols:
-        conn.execute(text("ALTER TABLE email_accounts ADD COLUMN imap_use_ssl BOOLEAN DEFAULT 1"))
-        conn.commit()
-    if "gmail_token" not in ea_cols:
-        conn.execute(text("ALTER TABLE email_accounts ADD COLUMN gmail_token TEXT"))
-        conn.commit()
-    if "gmail_token_expiry" not in ea_cols:
-        conn.execute(text("ALTER TABLE email_accounts ADD COLUMN gmail_token_expiry DATETIME"))
-        conn.commit()
+    # users table is created by Base.metadata.create_all if not exists
+
+    tables_to_check = {
+        "email_records": ["is_sent", "in_reply_to_id", "user_id"],
+        "email_accounts": ["imap_host", "imap_port", "imap_user", "imap_password", "imap_use_ssl", "gmail_token", "gmail_token_expiry", "user_id"],
+        "prediction_records": ["user_id"],
+        "feedback_records": ["user_id"],
+        "containers": ["user_id"],
+        "audit_logs": ["user_id"],
+    }
+
+    for table, columns in tables_to_check.items():
+        if not inspector.has_table(table):
+            continue
+        existing_cols = [c["name"] for c in inspector.get_columns(table)]
+        for col in columns:
+            if col not in existing_cols:
+                col_type = "INTEGER REFERENCES users(id) DEFAULT 1" if col == "user_id" else None
+                if col == "is_sent":
+                    col_type = "BOOLEAN DEFAULT 0"
+                elif col == "in_reply_to_id":
+                    col_type = "INTEGER REFERENCES email_records(id)"
+                elif col == "imap_host":
+                    col_type = "VARCHAR(255) DEFAULT 'imap.gmail.com'"
+                elif col == "imap_port":
+                    col_type = "INTEGER DEFAULT 993"
+                elif col == "imap_user":
+                    col_type = "VARCHAR(255)"
+                elif col == "imap_password":
+                    col_type = "VARCHAR(255)"
+                elif col == "imap_use_ssl":
+                    col_type = "BOOLEAN DEFAULT 1"
+                elif col == "gmail_token":
+                    col_type = "TEXT"
+                elif col == "gmail_token_expiry":
+                    col_type = "DATETIME"
+                if col_type:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+                    conn.commit()
+
+    # Remove unique constraint on containers.name since per-user names can repeat
+    if inspector.has_table("containers"):
+        # SQLite doesn't support DROP CONSTRAINT easily, so skip this migration
+        pass
+
     conn.close()
 
 

@@ -572,6 +572,9 @@
         <div class="topbar">
             <h2 id="feed-title">All Mail</h2>
             <div class="topbar-right">
+                <span id="user-badge" style="font-size:12px;color:var(--text-secondary);padding:4px 10px;border-radius:12px;border:1px solid var(--border);white-space:nowrap;">
+                    {{ user_email }}
+                </span>
                 <div style="position:relative;">
                     <div id="account-pill" style="display:flex;align-items:center;gap:8px;padding:4px 12px 4px 4px;border-radius:20px;border:1px solid var(--border);cursor:pointer;transition:background 0.12s;" onclick="toggleAccountDropdown(event)" title="Switch account" onmouseover="this.style.background='var(--sidebar-hover)'" onmouseout="this.style.background='transparent'">
                         <div id="acc-avatar" style="width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;">G</div>
@@ -580,6 +583,7 @@
                     </div>
                     <div id="account-dropdown" style="display:none;position:absolute;top:calc(100% + 4px);right:0;min-width:240px;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.12);z-index:100;padding:6px 0;"></div>
                 </div>
+                <span id="signout-btn" onclick="logout()" style="font-size:12px;color:#d93025;cursor:pointer;padding:4px 8px;border-radius:6px;transition:background 0.12s;white-space:nowrap;" onmouseover="this.style.background='var(--sidebar-hover)'" onmouseout="this.style.background='transparent'">&#10140; Sign Out</span>
             </div>
         </div>
 
@@ -934,7 +938,7 @@
         function loadContainers() {
             var list = document.getElementById('container-list');
             list.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);padding:8px 20px;">Loading...</div>';
-            fetch('/api/containers').then(function(r) { return r.json(); }).then(function(containers) {
+            apiFetch('/api/containers').then(function(r) { return r.json(); }).then(function(containers) {
                 // Get counts from stats
                 var countEl = document.getElementById('folder-counts-data');
                 if (countEl) {
@@ -973,7 +977,7 @@
             if (!name) return;
             var btn = event.target;
             btn.disabled = true;
-            fetch('/api/containers', {
+            apiFetch('/api/containers', {
                 method: 'POST',
                 headers: {'Content-Type':'application/json'},
                 body: JSON.stringify({name: name})
@@ -988,7 +992,7 @@
         }
         function deleteContainer(id, name) {
             if (!confirm('Delete "' + name + '" container? Emails inside will remain but the container will be removed.')) return;
-            fetch('/api/containers/' + id, {method:'DELETE'}).then(function(r) {
+            apiFetch('/api/containers/' + id, {method:'DELETE'}).then(function(r) {
                 if (r.ok) loadContainers();
                 else r.json().then(function(d) { alert(d.detail || 'Failed'); });
             }).catch(function() { alert('Error'); });
@@ -1156,7 +1160,7 @@
             const st = document.getElementById('correction-status');
             st.innerHTML = 'Saving...'; el.disabled = true;
             try {
-                const r = await fetch('/api/feedback', {
+                const r = await apiFetch('/api/feedback', {
                     method: 'POST',
                     headers: {'Content-Type':'application/json'},
                     body: JSON.stringify({
@@ -1183,7 +1187,7 @@
             btn.disabled = true;
             status.innerHTML = 'Sending...';
             try {
-                const r = await fetch('/api/reply/' + currentEmailId, {
+                const r = await apiFetch('/api/reply/' + currentEmailId, {
                     method: 'POST',
                     headers: {'Content-Type':'application/json'},
                     body: JSON.stringify({body: body})
@@ -1232,7 +1236,7 @@
             status.innerHTML = 'Sending...';
 
             try {
-                const r = await fetch('/api/compose', {
+                const r = await apiFetch('/api/compose', {
                     method: 'POST',
                     headers: {'Content-Type':'application/json'},
                     body: JSON.stringify({to: to, subject: subject, body: body})
@@ -1269,7 +1273,7 @@
             status.innerHTML = 'Saving draft...';
 
             try {
-                const r = await fetch('/api/drafts', {
+                const r = await apiFetch('/api/drafts', {
                     method: 'POST',
                     headers: {'Content-Type':'application/json'},
                     body: JSON.stringify({to: to, subject: subject, body: body})
@@ -1291,7 +1295,7 @@
         let allAccounts = [];
 
         function populateAccountDropdown() {
-            fetch('/api/accounts').then(function(r) { return r.json(); }).then(function(accs) {
+            apiFetch('/api/accounts').then(function(r) { return r.json(); }).then(function(accs) {
                 allAccounts = accs;
                 var dd = document.getElementById('account-dropdown');
                 var html = '';
@@ -1314,6 +1318,32 @@
             });
         }
 
+        // ── Auth ──
+        var AUTH_TOKEN = '{{ token }}' || localStorage.getItem('token') || '';
+        if (!AUTH_TOKEN) { window.location.href = '/auth/login'; }
+        localStorage.setItem('token', AUTH_TOKEN);
+
+        async function apiFetch(url, options) {
+            options = options || {};
+            options.headers = options.headers || {};
+            options.headers['Authorization'] = 'Bearer ' + AUTH_TOKEN;
+            try {
+                var r = await window.fetch(url, options);
+                if (r.status === 401) {
+                    localStorage.removeItem('token');
+                    window.location.href = '/auth/login';
+                }
+                return r;
+            } catch(e) {
+                throw e;
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = '/auth/login';
+        }
+
         function toggleAccountDropdown(event) {
             event.stopPropagation();
             var dd = document.getElementById('account-dropdown');
@@ -1334,7 +1364,7 @@
         }
 
         function switchAccount(accountId) {
-            fetch('/api/accounts/' + accountId + '/default', {method:'PUT'}).then(function(r) {
+            apiFetch('/api/accounts/' + accountId + '/default', {method:'PUT'}).then(function(r) {
                 if (r.ok) {
                     closeAccountDropdown();
                     // Update display
@@ -1362,7 +1392,7 @@
             var body = document.getElementById('activities-feed');
             body.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);padding:16px;text-align:center;">Loading...</div>';
             try {
-                var r = await fetch('/api/activities?limit=50');
+                var r = await apiFetch('/api/activities?limit=50');
                 if (!r.ok) { body.innerHTML = '<div style="color:red;padding:16px;">Failed to load</div>'; return; }
                 var logs = await r.json();
                 if (logs.length === 0) {
@@ -1426,7 +1456,7 @@
             el.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);padding:8px;">Loading...</div>';
             const switchEl = document.getElementById('settings-account-switch');
             try {
-                const r = await fetch('/api/accounts');
+                const r = await apiFetch('/api/accounts');
                 if (!r.ok) { el.innerHTML = '<div style="color:red;">Failed to load</div>'; return; }
                 const accounts = await r.json();
                 if (accounts.length === 0) {
@@ -1504,7 +1534,7 @@
             const imapUser = document.getElementById('new-acc-imap-user').value.trim() || null;
             const imapPass = document.getElementById('new-acc-imap-pass').value || null;
             try {
-                const r = await fetch('/api/accounts', {
+                const r = await apiFetch('/api/accounts', {
                     method: 'POST',
                     headers: {'Content-Type':'application/json'},
                     body: JSON.stringify({
@@ -1535,18 +1565,18 @@
         async function deleteAccount(id) {
             if (!confirm('Remove this account?')) return;
             try {
-                const r = await fetch('/api/accounts/' + id, {method:'DELETE'});
+                const r = await apiFetch('/api/accounts/' + id, {method:'DELETE'});
                 if (r.ok) loadAccounts();
             } catch(e) { alert('Error'); }
         }
         function switchAccountFromSettings(id) {
-            fetch('/api/accounts/' + id + '/default', {method:'PUT'}).then(function(r) {
+            apiFetch('/api/accounts/' + id + '/default', {method:'PUT'}).then(function(r) {
                 if (r.ok) { loadAccounts(); populateAccountDropdown(); }
             });
         }
         async function setDefaultAccount(id) {
             try {
-                const r = await fetch('/api/accounts/' + id + '/default', {method:'PUT'});
+                const r = await apiFetch('/api/accounts/' + id + '/default', {method:'PUT'});
                 if (r.ok) loadAccounts();
             } catch(e) { alert('Error'); }
         }
@@ -1555,7 +1585,7 @@
             const btn = document.getElementById('sync-btn-' + id);
             if (btn) { btn.innerHTML = '&#8987;'; btn.disabled = true; }
             try {
-                const r = await fetch('/api/accounts/' + id + '/sync', {method:'POST'});
+                const r = await apiFetch('/api/accounts/' + id + '/sync', {method:'POST'});
                 const data = await r.json();
                 if (r.ok && data.status === 'ok') {
                     if (btn) btn.innerHTML = '&#10003;';
@@ -1574,7 +1604,7 @@
 
         async function connectGmail(accountId) {
             try {
-                const r = await fetch('/api/accounts/' + accountId + '/gmail-auth-url');
+                const r = await apiFetch('/api/accounts/' + accountId + '/gmail-auth-url');
                 const data = await r.json();
                 if (r.ok && data.url) {
                     window.location.href = data.url;
@@ -1590,7 +1620,7 @@
             const btn = document.getElementById('gmail-sync-btn-' + id);
             if (btn) { btn.innerHTML = '&#8987;'; btn.disabled = true; }
             try {
-                const r = await fetch('/api/accounts/' + id + '/sync-gmail', {method:'POST'});
+                const r = await apiFetch('/api/accounts/' + id + '/sync-gmail', {method:'POST'});
                 const data = await r.json();
                 if (r.ok && data.status === 'ok') {
                     if (btn) btn.innerHTML = '&#10003;';
@@ -1609,7 +1639,7 @@
         function triggerRetrain() {
             const btn = document.getElementById('retrain-btn');
             btn.disabled = true; btn.innerHTML = '...';
-            fetch('/api/retrain', {method:'POST'})
+            apiFetch('/api/retrain', {method:'POST'})
                 .then(r => r.ok ? btn.innerHTML = 'Done' : btn.innerHTML = 'Fail')
                 .catch(() => btn.innerHTML = 'Error');
             setTimeout(() => { btn.disabled = false; btn.innerHTML = 'Retrain'; }, 2000);
@@ -1618,7 +1648,7 @@
         function triggerCleanup() {
             const btn = document.getElementById('cleanup-btn');
             btn.disabled = true; btn.innerHTML = '...';
-            fetch('/api/cleanup/spam', {method:'POST'})
+            apiFetch('/api/cleanup/spam', {method:'POST'})
                 .then(r => r.json())
                 .then(data => {
                     btn.innerHTML = data.moved_count + ' moved, ' + data.deleted_count + ' deleted';
@@ -1642,7 +1672,7 @@
         // Refresh from API on load to stay in sync with DB
         async function refreshAccountDisplay() {
             try {
-                const r = await fetch('/api/accounts');
+                const r = await apiFetch('/api/accounts');
                 if (!r.ok) return;
                 const accounts = await r.json();
                 const def = accounts.find(function(a) { return a.is_default; });
@@ -1703,7 +1733,7 @@
             const ids = Array.from(selectedIds);
             try {
                 for (const id of ids) {
-                    const r = await fetch('/api/emails/' + id, {method:'DELETE'});
+                    const r = await apiFetch('/api/emails/' + id, {method:'DELETE'});
                     if (!r.ok) throw new Error('Failed to delete ' + id);
                 }
                 selectedIds.clear();

@@ -29,7 +29,8 @@ def move_spam_to_trash():
             )
             if pred:
                 pred.routed_folder = "Trash"
-                audit.log(email_id=email.id, event_type="spam_moved_to_trash",
+                audit.log(email_id=email.id, user_id=email.user_id,
+                          event_type="spam_moved_to_trash",
                           payload={"message_id": email.message_id})
                 moved += 1
         db.commit()
@@ -55,7 +56,8 @@ def cleanup_trash_all():
         )
         audit = AuditLogRepository(db)
         for email in trash_emails:
-            audit.log(email_id=email.id, event_type="trash_cleaned",
+            audit.log(email_id=email.id, user_id=email.user_id,
+                      event_type="trash_cleaned",
                       payload={"message_id": email.message_id})
             db.delete(email)
             deleted += 1
@@ -84,7 +86,8 @@ def cleanup_trash_30d():
         )
         audit = AuditLogRepository(db)
         for email in old_trash:
-            audit.log(email_id=email.id, event_type="trash_auto_deleted",
+            audit.log(email_id=email.id, user_id=email.user_id,
+                      event_type="trash_auto_deleted",
                       payload={"message_id": email.message_id})
             db.delete(email)
             deleted += 1

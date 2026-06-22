@@ -59,13 +59,13 @@ spam_detector = SpamDetector()
 
 print("Seeding demo emails...")
 for i, data in enumerate(demo_emails, 1):
-    existing = email_repo.get_email_by_message_id(data["message_id"], "test")
+    existing = email_repo.get_email_by_message_id(data["message_id"], "test", user_id=1)
     if existing:
         print(f"  [{i}/8] Skipping (already exists): {data['subject'][:40]}")
         continue
 
     saved = email_repo.save_email(EmailRecord(
-        provider=data["provider"], message_id=data["message_id"],
+        user_id=1, provider=data["provider"], message_id=data["message_id"],
         sender=data["sender"], recipients=data["recipients"],
         subject=data["subject"],
         body_text=clean_body(data["body_text"], None),
@@ -80,13 +80,13 @@ for i, data in enumerate(demo_emails, 1):
     routing = route_email(spam_label, cat_label, confidence, 0.0)
 
     pred_repo.save_prediction(PredictionRecord(
-        email_id=saved.id, spam_score=spam_score, spam_label=spam_label,
+        user_id=1, email_id=saved.id, spam_score=spam_score, spam_label=spam_label,
         category_label=cat_label, category_confidence=confidence,
         priority_score=0.0, routed_folder=routing["routed_folder"],
         routed_action=routing["routed_action"],
     ))
 
-    audit.log(email_id=saved.id, event_type="demo_seeded",
+    audit.log(email_id=saved.id, user_id=1, event_type="demo_seeded",
               payload={"category": cat_label, "folder": routing["routed_folder"]})
 
     print(f"  [{i}/8] {data['subject'][:50]:50s} -> {cat_label:12s} -> {routing['routed_folder']}")
