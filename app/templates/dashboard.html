@@ -294,9 +294,6 @@
         .empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.3; }
         .empty-state h3 { font-size: 16px; font-weight: 500; color: var(--text-primary); }
         .empty-state p { font-size: 13px; margin-top: 4px; }
-        .spinner { display:inline-block; width:28px; height:28px; border:3px solid #e0e0e0; border-top-color:#1a73e8; border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:12px; }
-        @keyframes spin { to { transform:rotate(360deg); } }
-        .nav-badge { margin-left:auto; font-size:11px; font-weight:600; color:var(--text-secondary); background:#e8eaed; padding:0 6px; border-radius:10px; min-width:18px; text-align:center; line-height:18px; }
 
         .reading-pane {
             flex: 1;
@@ -316,7 +313,7 @@
         .read-view { display: none; flex-direction: column; height: 100%; }
         .read-view-header { padding: 16px 20px; border-bottom: 1px solid var(--border); }
         .read-view-header .read-subject { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
-        .read-sender-row { display: none; }
+        .read-sender-row { display: flex; align-items: center; gap: 10px; }
         .read-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; flex-shrink: 0; }
         .read-sender-name { font-size: 14px; font-weight: 500; }
         .read-diagnosis {
@@ -510,6 +507,7 @@
             </div>
             <span>Gmail</span>
         </div>
+
         <button class="compose-btn" onclick="openCompose()">
             <span class="icon">&#9998;</span>
             Compose
@@ -574,9 +572,6 @@
         <div class="topbar">
             <h2 id="feed-title">All Mail</h2>
             <div class="topbar-right">
-                <span id="user-badge" style="font-size:12px;color:var(--text-secondary);padding:4px 10px;border-radius:12px;border:1px solid var(--border);white-space:nowrap;">
-                    {{ user_email }}
-                </span>
                 <div style="position:relative;">
                     <div id="account-pill" style="display:flex;align-items:center;gap:8px;padding:4px 12px 4px 4px;border-radius:20px;border:1px solid var(--border);cursor:pointer;transition:background 0.12s;" onclick="toggleAccountDropdown(event)" title="Switch account" onmouseover="this.style.background='var(--sidebar-hover)'" onmouseout="this.style.background='transparent'">
                         <div id="acc-avatar" style="width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;">G</div>
@@ -603,7 +598,7 @@
                     <span class="count" id="email-count">{{ recent_emails|length }} messages</span>
                 </div>
                 <div class="search-bar">
-                    <input type="text" id="search-input" placeholder="Search in mails..." oninput="searchEmails(this.value)">
+                    <input type="text" id="search-input" placeholder="Search by sender, subject, or body..." oninput="searchEmails(this.value)">
                 </div>
                 <div class="sel-toolbar" id="sel-toolbar">
                     <span class="sel-count" id="sel-count">0 selected</span>
@@ -613,30 +608,28 @@
                     {% if recent_emails %}
                         {% for email in recent_emails %}
                            <div class="email-card"
-                                 data-id="{{ email.id }}"
-                                 data-folder="{{ email.routed_folder }}"
-                                 data-issent="{{ 'true' if email.is_sent else 'false' }}"
-                                 data-date="{{ email.received_at[:10] }}"
-                                 data-datetime="{{ email.received_at }}"
-                                onclick="openEmail(this, {{ email.id }},
-                                   '{{ email.sender|e }}',
-                                   '{{ email.recipients|e }}',
-                                   '{{ email.subject|e }}',
-                                   '{{ email.category_label }}',
-                                   '{{ email.routed_folder }}',
-                                   '{{ email.spam_label }}',
-                                   {{ 'true' if email.is_sent else 'false' }},
-                                   {{ email.in_reply_to_id if email.in_reply_to_id else 'null' }})">
-                            <input type="checkbox" class="card-checkbox" onclick="event.stopPropagation();toggleSelect(this)">
-                            <div class="card-content">
-                            <div class="card-top">
-                                {% if email.is_sent %}
-                                <span class="card-sender">To: {{ email.recipients }}</span>
-                                {% else %}
-                                <span class="card-sender">{{ email.sender }}</span>
-                                {% endif %}
-                                <span class="card-date">{{ email.received_at }}</span>
-                            </div>
+                                data-id="{{ email.id }}"
+                                data-folder="{{ email.routed_folder }}"
+                                data-issent="{{ 'true' if email.is_sent else 'false' }}"
+                                data-date="{{ email.received_at[:10] }}"
+                                data-datetime="{{ email.received_at }}"
+                               onclick="openEmail(this, {{ email.id }},
+                                  '{{ email.sender|e }}',
+                                  '{{ email.recipients|e }}',
+                                  '{{ email.subject|e }}',
+                                  '{{ email.category_label }}',
+                                  '{{ email.routed_folder }}',
+                                  '{{ email.spam_label }}',
+                                  {{ 'true' if email.is_sent else 'false' }},
+                                  {{ email.in_reply_to_id if email.in_reply_to_id else 'null' }})"
+                                 data-body="{{ email.body_text|e }}"
+                                 data-sender="{{ email.sender|e }}"
+                                 data-recipients="{{ email.recipients|e }}">
+                             <input type="checkbox" class="card-checkbox" onclick="event.stopPropagation();toggleSelect(this)">
+                             <div class="card-content">
+                             <div class="card-top">
+                                 <span class="card-date">{{ email.received_at }}</span>
+                             </div>
                             <div class="card-subject">{{ email.subject }}</div>
                             <div class="card-bottom">
                                 {% if email.is_sent %}
@@ -652,10 +645,10 @@
                         </div>
                         {% endfor %}
                     {% else %}
-                        <div class="empty-state" id="empty-state">
-                            <div class="empty-icon" id="empty-icon">&#9993;</div>
-                            <h3 id="empty-title">No emails yet</h3>
-                            <p id="empty-msg">Importing your emails — this may take a few minutes for large inboxes. They will appear here automatically.</p>
+                        <div class="empty-state">
+                            <div class="empty-icon">&#9993;</div>
+                            <h3>No emails yet</h3>
+                            <p>Ingest some emails to see them here.</p>
                         </div>
                     {% endif %}
                 </div>
@@ -1004,14 +997,17 @@
             const cards = document.querySelectorAll('.email-card');
             let visibleCount = 0;
             cards.forEach(function(card) {
-                if (card.classList.contains('hidden')) return; // already hidden by folder filter
+                if (card.classList.contains('hidden')) return;
                 if (!q) {
                     card.classList.remove('search-hidden');
                     visibleCount++;
                     return;
                 }
                 const text = (card.innerText || '').toLowerCase();
-                if (text.indexOf(q) !== -1) {
+                const sender = (card.dataset.sender || '').toLowerCase();
+                const recipients = (card.dataset.recipients || '').toLowerCase();
+                const body = (card.dataset.body || '').toLowerCase();
+                if (text.indexOf(q) !== -1 || sender.indexOf(q) !== -1 || recipients.indexOf(q) !== -1 || body.indexOf(q) !== -1) {
                     card.classList.remove('search-hidden');
                     visibleCount++;
                 } else {
@@ -1092,12 +1088,7 @@
             currentInReplyTo = inReplyTo;
 
             document.getElementById('read-subject').innerText = subject;
-            document.getElementById('read-body').innerHTML = '<div class="spinner"></div><div style="font-size:13px;color:var(--text-secondary);">Loading...</div>';
-            apiFetch('/api/emails/' + id).then(function(r) { return r.json(); }).then(function(email) {
-                document.getElementById('read-body').innerText = email.body_text || 'No content.';
-            }).catch(function() {
-                document.getElementById('read-body').innerText = 'Failed to load email content.';
-            });
+            document.getElementById('read-body').innerText = element.getAttribute('data-body') || 'No content.';
 
             const avatar = document.getElementById('read-avatar');
             const senderName = document.getElementById('read-sender');
@@ -1488,15 +1479,12 @@
                     const gmailConnectBtn = !acc.gmail_connected
                         ? `<button onclick="connectGmail(${acc.id})" title="Connect Google" style="border:none;background:transparent;cursor:pointer;font-size:14px;color:#ea4335;padding:2px 6px;border-radius:4px;" onmouseover="this.style.background='var(--sidebar-hover)'" onmouseout="this.style.background='transparent'">G</button>`
                         : '';
-                    const syncTime = acc.last_sync_at ? new Date(acc.last_sync_at).toLocaleString() : 'Never';
-                    const syncIcon = acc.initial_sync_done ? '&#9989;' : '&#9203;';
                     html += `<div class="account-row">
                         <div class="acc-info">
                             <span style="font-size:16px;">&#9993;</span>
                             <div>
                                 <div class="acc-email">${acc.email} ${badge}</div>
                                 <div style="font-size:11px;color:var(--text-secondary);">S: ${acc.smtp_host}:${acc.smtp_port} &nbsp;|&nbsp; I: ${acc.imap_host}:${acc.imap_port} <span title="${imapLabel}">${imapIcon}</span> &nbsp;|&nbsp; G: <span title="${gmailLabel}">${gmailIcon}</span></div>
-                                <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">${syncIcon} Last sync: ${syncTime}</div>
                             </div>
                         </div>
                         <div class="acc-actions">
@@ -1504,16 +1492,7 @@
                             ${gmailSyncBtn}
                             ${imapSyncBtn}
                             ${defaultBtn}
-                            <button onclick="editAccount(${acc.id})" title="Edit">&#9998;</button>
                             <button onclick="deleteAccount(${acc.id})" title="Remove">&#128465;</button>
-                        </div>
-                    </div>
-                    <div id="edit-form-${acc.id}" class="edit-acc-form" style="display:none;padding:8px 12px;border-top:1px solid var(--border);background:#fafafa;">
-                        <input type="password" id="edit-imap-${acc.id}" placeholder="New IMAP password (leave blank to keep)" style="width:100%;margin-bottom:4px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;">
-                        <input type="password" id="edit-smtp-${acc.id}" placeholder="New SMTP password (leave blank to keep)" style="width:100%;margin-bottom:4px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;">
-                        <div style="display:flex;gap:6px;">
-                            <button onclick="saveEditAccount(${acc.id})" style="flex:1;padding:5px;background:var(--primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;">Save</button>
-                            <button onclick="cancelEditAccount(${acc.id})" style="flex:1;padding:5px;background:var(--border);color:var(--text-primary);border:none;border-radius:6px;cursor:pointer;font-size:12px;">Cancel</button>
                         </div>
                     </div>`;
                 }
@@ -1598,34 +1577,6 @@
                 if (r.ok) loadAccounts();
             } catch(e) { alert('Error'); }
         }
-        function editAccount(id) {
-            var f = document.getElementById('edit-form-' + id);
-            f.style.display = f.style.display === 'none' ? 'block' : 'none';
-        }
-        function cancelEditAccount(id) {
-            document.getElementById('edit-form-' + id).style.display = 'none';
-            document.getElementById('edit-imap-' + id).value = '';
-            document.getElementById('edit-smtp-' + id).value = '';
-        }
-        async function saveEditAccount(id) {
-            var imapPass = document.getElementById('edit-imap-' + id).value;
-            var smtpPass = document.getElementById('edit-smtp-' + id).value;
-            if (!imapPass && !smtpPass) { alert('Enter at least one password to update'); return; }
-            var body = {};
-            if (imapPass) body.imap_password = imapPass;
-            if (smtpPass) body.smtp_password = smtpPass;
-            try {
-                var r = await apiFetch('/api/accounts/' + id, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
-                if (r.ok) {
-                    cancelEditAccount(id);
-                    loadAccounts();
-                    alert('Credentials updated! The scheduler will sync within 60 seconds.');
-                } else {
-                    var d = await r.json();
-                    alert('Failed: ' + (d.detail || 'unknown error'));
-                }
-            } catch(e) { alert('Error: ' + e.message); }
-        }
 
         async function syncAccount(id) {
             const btn = document.getElementById('sync-btn-' + id);
@@ -1655,7 +1606,7 @@
                 if (r.ok && data.url) {
                     window.location.href = data.url;
                 } else {
-                    alert('Gmail OAuth not available. Use App Password instead:\n\nGo to https://myaccount.google.com/apppasswords\nGenerate a 16-char password for "Mail" → "Other" → "AI Email Assistant"\nThen add it via IMAP credentials in the Add Account form.');
+                    alert('Failed to get auth URL: Gmail OAuth not configured. Add GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET to .env');
                 }
             } catch(e) {
                 alert('Error: ' + e.message);
