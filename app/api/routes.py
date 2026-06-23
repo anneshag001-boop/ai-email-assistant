@@ -16,7 +16,7 @@ from app.api.schemas import (
     IngestEmailRequest, IngestEmailResponse, ClassifyResponse,
     FeedbackRequest, FeedbackResponse, EmailOut, MetricsResponse,
     RetrainResponse, CleanupResponse, ComposeRequest, ReplyRequest, ComposeResponse,
-    AccountIn, AccountOut, ContainerIn, ContainerOut, ActivityOut,
+    AccountIn, AccountUpdateIn, AccountOut, ContainerIn, ContainerOut, ActivityOut,
 )
 from app.preprocessing.cleaner import clean_body
 from app.ai.spam_detector import SpamDetector
@@ -38,6 +38,9 @@ def _resolve_sender(db: Session, user_id: int) -> str:
     default = AccountRepository(db).get_default_account_for_user(user_id)
     if default:
         return default.email
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        return user.email
     return settings.smtp_default_sender or settings.smtp_user or "user@localhost"
 
 
@@ -80,6 +83,8 @@ def _account_to_out(acc) -> dict:
         "has_imap_password": bool(acc.imap_password),
         "gmail_connected": bool(acc.gmail_token),
         "is_default": bool(acc.is_default),
+        "initial_sync_done": bool(acc.initial_sync_done),
+        "last_sync_at": acc.last_sync_at.isoformat() if acc.last_sync_at else None,
         "created_at": acc.created_at.isoformat() if acc.created_at else None,
     }
 
@@ -123,6 +128,29 @@ def delete_account(
     return {"status": "deleted"}
 
 
+@router.put("/accounts/{account_id}")
+def update_account(
+    account_id: int,
+    req: AccountUpdateIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_user),
+):
+    repo = AccountRepository(db)
+    kwargs = {}
+    if req.imap_password:
+        kwargs["imap_password"] = req.imap_password
+    if req.imap_user:
+        kwargs["imap_user"] = req.imap_user
+    if req.smtp_password:
+        kwargs["smtp_password"] = req.smtp_password
+    if req.smtp_user:
+        kwargs["smtp_user"] = req.smtp_user
+    acc = repo.update_account_credentials(account_id, current_user.id, **kwargs)
+    if not acc:
+        raise HTTPException(404, "Account not found")
+    return _account_to_out(acc)
+
+
 @router.put("/accounts/{account_id}/default")
 def set_default_account(
     account_id: int,
@@ -145,6 +173,39 @@ def sync_account_emails(
     if result["status"] == "error":
         raise HTTPException(400, result["message"])
     return result
+
+
+@router.get("/accounts/{account_id}/gmail-auth-url")
+def get_gmail_auth_url(
+    account_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_user),
+):
+    from app.core.settings import settings
+    if not settings.gmail_client_id or not settings.gmail_client_secret:
+        raise HTTPException(400, "Gmail OAuth is not configured. Use App Password instead — go to https://myaccount.google.com/apppasswords to generate one.")
+    return {
+        "url": (
+            f"https://accounts.google.com/o/oauth2/auth?"
+            f"client_id={settings.gmail_client_id}&redirect_uri={settings.gmail_redirect_uri}&"
+            f"scope=https://www.googleapis.com/auth/gmail.modify&response_type=code&"
+            f"access_type=offline&prompt=consent"
+        )
+    }
+
+
+@router.post("/accounts/{account_id}/sync-gmail")
+def sync_gmail_account(
+    account_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_user),
+):
+    account = AccountRepository(db).get_account(account_id)
+    if not account:
+        raise HTTPException(404, "Account not found")
+    if not account.gmail_token:
+        raise HTTPException(400, "No Gmail token. Use IMAP App Password instead.")
+    raise HTTPException(501, "Gmail API sync not implemented — use IMAP App Password. Go to Settings → Add Account and enter your Gmail credentials.")
 
 
 @router.get("/containers", response_model=List[ContainerOut])
@@ -300,7 +361,8 @@ def classify_email(
         email.sender or "", email.recipients or ""
     )
     classifier = EmailClassifier()
-    cat_label, cat_conf = classifier.classify(email.subject or "", email.body_text or "", email.body_html or "")
+    cat_label, cat_conf = classifier.classify(email.subject or "", email.body_text or "", email.body_html or "",
+                                              user_id=current_user.id, db=db)
     confidence = compute_confidence(spam_score, cat_conf)
     routing = route_email(spam_label, cat_label, confidence, 0.0)
     pred = PredictionRecord(
@@ -394,6 +456,17 @@ def cleanup():
     moved = move_spam_to_trash()
     deleted = cleanup_trash_all()
     return CleanupResponse(status="ok", moved_count=moved, deleted_count=deleted)
+
+
+@router.get("/trigger-sync")
+def trigger_sync_cron(secret: str = Query("")):
+    """Endpoint for external cron services (cron-job.org, UptimeRobot)."""
+    from app.jobs.scheduler import poll_all_accounts
+    expected = settings.cron_secret or "changeme"
+    if secret != expected:
+        raise HTTPException(403, "Invalid secret")
+    poll_all_accounts()
+    return {"status": "ok"}
 
 
 @router.delete("/emails/{email_id}")

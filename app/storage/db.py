@@ -45,7 +45,7 @@ def _migrate_existing_db():
 
     tables_to_check = {
         "email_records": ["is_sent", "in_reply_to_id", "user_id"],
-        "email_accounts": ["imap_host", "imap_port", "imap_user", "imap_password", "imap_use_ssl", "gmail_token", "gmail_token_expiry", "user_id"],
+        "email_accounts": ["imap_host", "imap_port", "imap_user", "imap_password", "imap_use_ssl", "gmail_token", "gmail_token_expiry", "user_id", "initial_sync_done", "last_sync_at"],
         "prediction_records": ["user_id"],
         "feedback_records": ["user_id"],
         "containers": ["user_id"],
@@ -76,6 +76,10 @@ def _migrate_existing_db():
                 elif col == "gmail_token":
                     col_type = "TEXT"
                 elif col == "gmail_token_expiry":
+                    col_type = "DATETIME"
+                elif col == "initial_sync_done":
+                    col_type = "BOOLEAN DEFAULT 0"
+                elif col == "last_sync_at":
                     col_type = "DATETIME"
                 if col_type:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))

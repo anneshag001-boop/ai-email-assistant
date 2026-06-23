@@ -89,7 +89,7 @@ def dashboard(
         })
 
     default_acc = AccountRepository(db).get_default_account_for_user(user.id)
-    default_email = default_acc.email if default_acc else (settings.smtp_default_sender or settings.smtp_user or "")
+    default_email = default_acc.email if default_acc else user.email
 
     return templates.TemplateResponse(
         request=request,

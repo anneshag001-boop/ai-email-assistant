@@ -5,6 +5,7 @@ from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from datetime import datetime
+from email.header import decode_header
 import base64
 import logging
 from app.ingestion import NormalizedEmail
@@ -51,6 +52,22 @@ class GmailClient:
                 logger.warning("Failed to fetch Gmail msg %s: %s", msg_meta["id"], e)
         return emails
 
+    @staticmethod
+    def _decode_subject(raw: str) -> str:
+        if not raw or not raw.startswith("=?"):
+            return raw
+        try:
+            parts = decode_header(raw)
+            decoded = []
+            for part, charset in parts:
+                if isinstance(part, bytes):
+                    decoded.append(part.decode(charset or "utf-8", errors="replace"))
+                else:
+                    decoded.append(str(part))
+            return " ".join(decoded)
+        except Exception:
+            return raw
+
     def _parse_message(self, msg: dict) -> Optional[NormalizedEmail]:
         headers = {h["name"].lower(): h["value"] for h in msg["payload"].get("headers", [])}
         received_at = None
@@ -65,7 +82,7 @@ class GmailClient:
         return NormalizedEmail(
             provider="gmail", message_id=headers.get("message-id", msg["id"]),
             sender=headers.get("from", ""), recipients=headers.get("to", ""),
-            subject=headers.get("subject", ""),
+            subject=self._decode_subject(headers.get("subject", "")),
             body_text=body_text or msg.get("snippet", ""),
             body_html=body_html, received_at=received_at,
             thread_id=msg.get("threadId", ""),

@@ -1,5 +1,7 @@
 import imaplib
 import email
+from email.header import decode_header
+from datetime import datetime
 from email.utils import parsedate_to_datetime
 from typing import List, Optional
 import logging
@@ -34,7 +36,7 @@ class IMAPClient:
         if not self.conn:
             raise RuntimeError("Not connected. Call connect() first.")
         self.conn.select(folder)
-        search_criteria = "UNSEEN" if unseen_only else "ALL"
+        search_criteria = "UNSEEN" if unseen_only else f'SINCE 01-Jan-{datetime.now().year}'
         _, data = self.conn.search(None, search_criteria)
         emails = []
         nums = data[0].split() if data[0] else []
@@ -57,7 +59,7 @@ class IMAPClient:
 
     def _parse_raw(self, raw_bytes: bytes, uid: str) -> Optional[NormalizedEmail]:
         msg = email.message_from_bytes(raw_bytes)
-        subject = msg.get("Subject", "")
+        subject = self._decode_subject(msg.get("Subject", ""))
         sender = msg.get("From", "")
         recipients = msg.get("To", "")
         message_id = msg.get("Message-ID", uid)
@@ -72,6 +74,21 @@ class IMAPClient:
             received_at=received_at, thread_id=msg.get("References", "") or msg.get("In-Reply-To", ""),
             attachments_count=attachments_count,
         )
+
+    def _decode_subject(self, raw: str) -> str:
+        if not raw or not raw.startswith("=?"):
+            return raw
+        try:
+            parts = decode_header(raw)
+            decoded = []
+            for part, charset in parts:
+                if isinstance(part, bytes):
+                    decoded.append(part.decode(charset or "utf-8", errors="replace"))
+                else:
+                    decoded.append(str(part))
+            return " ".join(decoded)
+        except Exception:
+            return raw
 
     def _extract_body(self, msg) -> tuple:
         body_text = body_html = ""

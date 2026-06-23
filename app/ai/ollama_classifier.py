@@ -2,6 +2,7 @@ import json
 import logging
 import requests
 from typing import Tuple, Optional
+from sqlalchemy.orm import Session
 from app.core.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ Categories:
 - other_work: Google Alerts, bank alerts/statements, OTP/password emails, login verification codes, WhatsApp/GPay notifications, important app notifications, security alerts, bill reminders, payment confirmations
 - others: Facebook, Instagram, Twitter/X, LinkedIn, YouTube, random social media notifications, casual app notifications, newsletters, general announcements
 - spam: Unsolicited bulk emails, scams, phishing attempts, fake prizes, lottery, cryptocurrency scams, suspicious offers, unsolicited advertisements
-
+{corrections}
 Email Subject: {subject}
 Email Body: {body}
 
@@ -31,8 +32,22 @@ class OllamaClassifier:
         self.timeout = timeout or settings.ollama_timeout
         self._base_url = f"http://{self.host}:{self.port}"
 
-    def classify(self, subject: str, body_text: str, body_html: str = None) -> Tuple[str, float]:
-        prompt = CLASSIFICATION_PROMPT.format(
+    def classify(self, subject: str, body_text: str, body_html: str = None,
+                 user_id: Optional[int] = None, db: Optional[Session] = None) -> Tuple[str, float]:
+        from app.storage.repository import FeedbackRepository
+        corrections_text = ""
+        if user_id is not None and db is not None:
+            try:
+                recent = FeedbackRepository(db).get_recent_corrections(user_id, limit=5)
+                if recent:
+                    lines = "\n".join(
+                        f"  - \"{c['subject']}\" was {c['old_label']} -> {c['corrected_label']}"
+                        for c in recent
+                    )
+                    corrections_text = "\nHere are recent corrections you learned from:\n" + lines + "\n\nLearn from these corrections and apply similar logic going forward.\n"
+            except Exception as e:
+                logger.debug("Failed to fetch corrections for few-shot: %s", e)
+        prompt = CLASSIFICATION_PROMPT.replace("{corrections}", corrections_text).format(
             subject=subject or "(no subject)",
             body=(body_text or "(no body)")[:2000]
         )

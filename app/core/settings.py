@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     smtp_default_sender: Optional[str] = None
 
+    gmail_client_id: Optional[str] = None
+    gmail_client_secret: Optional[str] = None
+    gmail_redirect_uri: str = "http://localhost:8000/auth/gmail/callback"
+
+    cron_secret: str = "changeme"
+
     @property
     def effective_database_url(self) -> str:
         return self.database_url

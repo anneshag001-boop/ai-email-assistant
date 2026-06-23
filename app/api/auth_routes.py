@@ -1,4 +1,5 @@
 import os
+import threading
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -43,17 +44,27 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     ContainerRepository(db).seed_for_user(user.id)
-    if req.gmail_app_password:
-        gmail = req.gmail_email or req.email
-        AccountRepository(db).create_account(
-            email=gmail,
-            imap_host="imap.gmail.com", imap_port=993, imap_user=gmail,
-            imap_password=req.gmail_app_password, imap_use_ssl=True,
-            smtp_host="smtp.gmail.com", smtp_port=587, smtp_user=gmail,
-            smtp_password=req.gmail_app_password, smtp_use_tls=True,
-            is_default=True, user_id=user.id,
-        )
+    gmail = req.gmail_email or req.email
+    acc = AccountRepository(db).create_account(
+        email=gmail,
+        imap_host="imap.gmail.com", imap_port=993, imap_user=gmail,
+        imap_password=req.gmail_app_password,
+        imap_use_ssl=True,
+        smtp_host="smtp.gmail.com", smtp_port=587, smtp_user=gmail,
+        smtp_password=req.gmail_app_password,
+        smtp_use_tls=True,
+        is_default=True, user_id=user.id,
+    )
     token = create_access_token({"sub": str(user.id)})
+    if req.gmail_app_password:
+        def _initial_sync(aid: int):
+            try:
+                from app.jobs.sync_job import sync_account
+                sync_account(aid)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error("Background initial sync failed: %s", e)
+        threading.Thread(target=_initial_sync, args=(acc.id,), daemon=True).start()
     return {"access_token": token, "token_type": "bearer", "user": {"id": user.id, "email": user.email}}
 
 

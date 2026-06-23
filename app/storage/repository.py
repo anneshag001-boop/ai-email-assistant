@@ -140,6 +140,29 @@ class FeedbackRepository:
             FeedbackRecord.user_id == user_id
         ).order_by(desc(FeedbackRecord.corrected_at)).offset(skip).limit(limit).all()
 
+    def get_recent_corrections(self, user_id: int, limit: int = 5) -> List[dict]:
+        rows = self.db.query(
+            FeedbackRecord.old_label,
+            FeedbackRecord.corrected_label,
+            EmailRecord.subject,
+        ).join(
+            EmailRecord, FeedbackRecord.email_id == EmailRecord.id
+        ).filter(
+            FeedbackRecord.user_id == user_id,
+            FeedbackRecord.old_label.isnot(None),
+            EmailRecord.subject.isnot(None),
+        ).order_by(
+            desc(FeedbackRecord.corrected_at)
+        ).limit(limit).all()
+        return [
+            {
+                "old_label": r.old_label,
+                "corrected_label": r.corrected_label,
+                "subject": r.subject,
+            }
+            for r in rows
+        ]
+
 
 DEFAULT_CONTAINERS = ["Private", "Business", "Other Work", "Others", "Spam"]
 
@@ -270,6 +293,27 @@ class AccountRepository:
         account.is_default = True
         self.db.commit()
         self.db.refresh(account)
+        return account
+
+    def update_account_credentials(self, account_id: int, user_id: int, **kwargs) -> Optional[EmailAccount]:
+        account = self.db.query(EmailAccount).filter(
+            EmailAccount.id == account_id, EmailAccount.user_id == user_id
+        ).first()
+        if not account:
+            return None
+        if "imap_password" in kwargs and kwargs["imap_password"]:
+            account.imap_password = self._encrypt(kwargs["imap_password"])
+        if "imap_user" in kwargs and kwargs["imap_user"]:
+            account.imap_user = kwargs["imap_user"]
+        if "smtp_password" in kwargs and kwargs["smtp_password"]:
+            account.smtp_password = self._encrypt(kwargs["smtp_password"])
+        if "smtp_user" in kwargs and kwargs["smtp_user"]:
+            account.smtp_user = kwargs["smtp_user"]
+        account.initial_sync_done = False
+        self.db.commit()
+        self.db.refresh(account)
+        account.imap_password = "[encrypted]" if account.imap_password else None
+        account.smtp_password = "[encrypted]" if account.smtp_password else None
         return account
 
     def _encrypt(self, value: str) -> str:

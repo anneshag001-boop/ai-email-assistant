@@ -1,8 +1,10 @@
 import json
 import logging
-from typing import Tuple
+from typing import Tuple, Optional
 from groq import Groq
+from sqlalchemy.orm import Session
 from app.core.settings import settings
+from app.storage.repository import FeedbackRepository
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +15,12 @@ GROQ_MODELS = {
     "gemma2": "gemma2-9b-it",
 }
 
+FEW_SHOT_EXAMPLE = """
+Here are recent corrections you learned from (old_label -> corrected_label):
+{examples}
+
+Learn from these corrections and apply similar logic going forward."""
+
 CLASSIFICATION_PROMPT = """You are an email classifier. Classify this email into exactly ONE category.
 
 Categories:
@@ -21,7 +29,7 @@ Categories:
 - other_work: Google Alerts, bank alerts/statements, OTP/password emails, login verification codes, security alerts, bill reminders
 - others: Facebook, Instagram, Twitter/X, LinkedIn, YouTube, newsletters, social media notifications, general announcements
 - spam: Unsolicited bulk emails, scams, phishing attempts, fake prizes, lottery, cryptocurrency scams, suspicious offers
-
+{corrections}
 Email Subject: {subject}
 Email Body: {body}
 
@@ -34,13 +42,27 @@ class CloudClassifier:
         self.client = Groq(api_key=settings.groq_api_key) if settings.groq_api_key else None
         self.model = GROQ_MODELS.get(settings.groq_model, "llama3-8b-8192")
 
-    def classify(self, subject: str, body_text: str, body_html: str = None) -> Tuple[str, float]:
+    def classify(self, subject: str, body_text: str, body_html: str = None,
+                 user_id: Optional[int] = None, db: Optional[Session] = None) -> Tuple[str, float]:
         if not self.client:
             logger.warning("Groq API key not configured, using rule fallback")
             return self._rule_fallback(subject or "", body_text or "")
+        corrections_text = ""
+        if user_id is not None and db is not None:
+            try:
+                recent = FeedbackRepository(db).get_recent_corrections(user_id, limit=5)
+                if recent:
+                    lines = "\n".join(
+                        f"  - \"{c['subject']}\" was {c['old_label']} -> {c['corrected_label']}"
+                        for c in recent
+                    )
+                    corrections_text = FEW_SHOT_EXAMPLE.format(examples=lines)
+            except Exception as e:
+                logger.debug("Failed to fetch corrections for few-shot: %s", e)
         prompt = CLASSIFICATION_PROMPT.format(
             subject=(subject or "(no subject)")[:500],
             body=(body_text or "(no body)")[:2000],
+            corrections=corrections_text,
         )
         try:
             response = self.client.chat.completions.create(

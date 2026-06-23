@@ -90,6 +90,8 @@ class EmailAccount(Base):
     gmail_token = Column(Text, nullable=True)
     gmail_token_expiry = Column(DateTime, nullable=True)
     is_default = Column(Boolean, default=False)
+    initial_sync_done = Column(Boolean, default=False)
+    last_sync_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 

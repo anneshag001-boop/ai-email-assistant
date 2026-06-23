@@ -94,6 +94,21 @@ class AccountIn(BaseModel):
     is_default: bool = False
 
 
+class AccountUpdateIn(BaseModel):
+    email: Optional[str] = None
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_use_tls: Optional[bool] = None
+    imap_host: Optional[str] = None
+    imap_port: Optional[int] = None
+    imap_user: Optional[str] = None
+    imap_password: Optional[str] = None
+    imap_use_ssl: Optional[bool] = None
+    is_default: Optional[bool] = None
+
+
 class AccountOut(BaseModel):
     id: int
     email: str
@@ -108,6 +123,8 @@ class AccountOut(BaseModel):
     has_imap_password: bool = False
     gmail_connected: bool = False
     is_default: bool
+    initial_sync_done: bool = False
+    last_sync_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
 
     class Config:
