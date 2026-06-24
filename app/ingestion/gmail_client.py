@@ -15,10 +15,11 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
 
 class GmailClient:
-    def __init__(self, token_path: str = "data/raw/gmail_token.pickle",
-                 credentials_path: str = "data/raw/gmail_credentials.json"):
-        self.token_path = token_path
-        self.credentials_path = credentials_path
+    def __init__(self, token_path: str = None,
+                 credentials_path: str = None):
+        from app.core.settings import settings
+        self.token_path = token_path or settings.gmail_token_path
+        self.credentials_path = credentials_path or settings.gmail_credentials_path
         self.service = None
 
     def authenticate(self):

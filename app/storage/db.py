@@ -90,6 +90,26 @@ def _migrate_existing_db():
         # SQLite doesn't support DROP CONSTRAINT easily, so skip this migration
         pass
 
+    # Create missing indexes (safe to run repeatedly — IF NOT EXISTS is idempotent)
+    index_defs = [
+        ("ix_email_record_dedup", "email_records", ["message_id", "provider", "user_id"]),
+        ("ix_email_records_user_id", "email_records", ["user_id"]),
+        ("ix_email_records_received_at", "email_records", ["received_at"]),
+        ("ix_prediction_records_user_id", "prediction_records", ["user_id"]),
+        ("ix_prediction_records_email_id", "prediction_records", ["email_id"]),
+        ("ix_feedback_records_user_id", "feedback_records", ["user_id"]),
+        ("ix_containers_user_id", "containers", ["user_id"]),
+        ("ix_email_accounts_user_id", "email_accounts", ["user_id"]),
+        ("ix_audit_logs_user_id", "audit_logs", ["user_id"]),
+    ]
+    for idx_name, table, columns in index_defs:
+        try:
+            cols = ", ".join(columns)
+            conn.execute(text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table} ({cols})"))
+            conn.commit()
+        except Exception:
+            pass  # table might not exist yet; metadata.create_all will handle new DBs
+
     conn.close()
 
 

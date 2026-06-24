@@ -65,7 +65,7 @@ def dashboard(
         .outerjoin(PredictionRecord, EmailRecord.id == PredictionRecord.email_id)
         .filter(EmailRecord.user_id == user.id)
         .order_by(desc(EmailRecord.received_at))
-        .limit(50)
+        .limit(200)
         .all()
     )
 

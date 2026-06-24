@@ -7,19 +7,21 @@ from app.storage.models import EmailRecord, PredictionRecord
 logger = logging.getLogger(__name__)
 
 
-def move_spam_to_trash():
+def move_spam_to_trash(user_id: int = None):
     logger.info("Moving spam >1 day old to Trash")
     db = SessionLocal()
     moved = 0
     try:
         cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=1)
-        spam_emails = (
-            db.query(EmailRecord)
-            .join(PredictionRecord, EmailRecord.id == PredictionRecord.email_id)
-            .filter(PredictionRecord.routed_folder == "Spam")
-            .filter(EmailRecord.received_at < cutoff)
-            .all()
+        q = db.query(EmailRecord).join(
+            PredictionRecord, EmailRecord.id == PredictionRecord.email_id
+        ).filter(
+            PredictionRecord.routed_folder == "Spam",
+            EmailRecord.received_at < cutoff,
         )
+        if user_id:
+            q = q.filter(EmailRecord.user_id == user_id)
+        spam_emails = q.all()
         audit = AuditLogRepository(db)
         for email in spam_emails:
             pred = (
@@ -43,17 +45,17 @@ def move_spam_to_trash():
     return moved
 
 
-def cleanup_trash_all():
+def cleanup_trash_all(user_id: int = None):
     logger.info("Permanently deleting all emails in Trash")
     db = SessionLocal()
     deleted = 0
     try:
-        trash_emails = (
-            db.query(EmailRecord)
-            .join(PredictionRecord, EmailRecord.id == PredictionRecord.email_id)
-            .filter(PredictionRecord.routed_folder == "Trash")
-            .all()
-        )
+        q = db.query(EmailRecord).join(
+            PredictionRecord, EmailRecord.id == PredictionRecord.email_id
+        ).filter(PredictionRecord.routed_folder == "Trash")
+        if user_id:
+            q = q.filter(EmailRecord.user_id == user_id)
+        trash_emails = q.all()
         audit = AuditLogRepository(db)
         for email in trash_emails:
             audit.log(email_id=email.id, user_id=email.user_id,

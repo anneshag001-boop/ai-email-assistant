@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     spam_retention_days: int = 30
     dashboard_refresh_interval: int = 60
 
-    ollama_enabled: bool = True
+    ollama_enabled: bool = False
     ollama_host: str = "localhost"
     ollama_port: int = 11434
     ollama_model: str = "llama3.2:3b"
@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     gmail_redirect_uri: str = "http://localhost:8000/auth/gmail/callback"
 
     cron_secret: str = "changeme"
+
+    gmail_token_path: str = "data/raw/gmail_token.pickle"
+    gmail_credentials_path: str = "data/raw/gmail_credentials.json"
 
     @property
     def effective_database_url(self) -> str:

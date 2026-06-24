@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, JSON, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, JSON, ForeignKey, Boolean, Index
 from sqlalchemy.orm import DeclarativeBase
 
 
@@ -18,7 +18,7 @@ class User(Base):
 class EmailRecord(Base):
     __tablename__ = "email_records"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     provider = Column(String(50), nullable=False)
     message_id = Column(String(255), nullable=False)
     sender = Column(String(255), nullable=False)
@@ -26,7 +26,7 @@ class EmailRecord(Base):
     subject = Column(String(512), nullable=True)
     body_text = Column(Text, nullable=True)
     body_html = Column(Text, nullable=True)
-    received_at = Column(DateTime, nullable=True)
+    received_at = Column(DateTime, nullable=True, index=True)
     thread_id = Column(String(255), nullable=True)
     attachments_count = Column(Integer, default=0)
     language = Column(String(10), nullable=True)
@@ -34,12 +34,16 @@ class EmailRecord(Base):
     is_sent = Column(Boolean, default=False)
     in_reply_to_id = Column(Integer, ForeignKey("email_records.id", ondelete="SET NULL"), nullable=True)
 
+    __table_args__ = (
+        Index("ix_email_record_dedup", "message_id", "provider", "user_id"),
+    )
+
 
 class PredictionRecord(Base):
     __tablename__ = "prediction_records"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    email_id = Column(Integer, ForeignKey("email_records.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    email_id = Column(Integer, ForeignKey("email_records.id"), nullable=False, index=True)
     spam_score = Column(Float, default=0.0)
     spam_label = Column(String(20), nullable=True)
     category_label = Column(String(50), nullable=True)
@@ -53,7 +57,7 @@ class PredictionRecord(Base):
 class FeedbackRecord(Base):
     __tablename__ = "feedback_records"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     email_id = Column(Integer, ForeignKey("email_records.id"), nullable=False)
     old_label = Column(String(50), nullable=True)
     corrected_label = Column(String(50), nullable=False)
@@ -65,7 +69,7 @@ class FeedbackRecord(Base):
 class Container(Base):
     __tablename__ = "containers"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String(100), nullable=False)
     is_default = Column(Boolean, default=False)
     sort_order = Column(Integer, default=0)
@@ -75,7 +79,7 @@ class Container(Base):
 class EmailAccount(Base):
     __tablename__ = "email_accounts"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     email = Column(String(255), nullable=False)
     smtp_host = Column(String(255), default="smtp.gmail.com")
     smtp_port = Column(Integer, default=587)
@@ -98,7 +102,7 @@ class EmailAccount(Base):
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     email_id = Column(Integer, ForeignKey("email_records.id"), nullable=True)
     event_type = Column(String(50), nullable=False)
     event_payload = Column(JSON, nullable=True)

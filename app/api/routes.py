@@ -44,9 +44,16 @@ def _resolve_sender(db: Session, user_id: int) -> str:
     return settings.smtp_default_sender or settings.smtp_user or "user@localhost"
 
 
-def _send_smtp(to: str, subject: str, body: str, sender: str = "") -> bool:
+def _send_smtp(to: str, subject: str, body: str, sender: str = "",
+               db: Session = None, user_id: int = None) -> bool:
     acc_user = settings.smtp_user
     acc_pass = settings.smtp_password
+    if db and user_id:
+        repo = AccountRepository(db)
+        account = repo.get_default_account_for_user(user_id)
+        if account and account.smtp_password:
+            acc_user = account.smtp_user or account.email
+            acc_pass = repo.decrypt_password(account.smtp_password)
     if not acc_user or not acc_pass:
         logger.warning("SMTP not configured — email logged but not sent")
         return False
@@ -257,7 +264,7 @@ def compose_email(
         routed_folder="Sent", routed_action="none",
     )
     PredictionRepository(db).save_prediction(pred)
-    smtp_ok = _send_smtp(req.to, req.subject, req.body, sender)
+    smtp_ok = _send_smtp(req.to, req.subject, req.body, sender, db, current_user.id)
     AuditLogRepository(db).log(
         email_id=email.id, user_id=current_user.id,
         event_type="email_sent",
@@ -311,7 +318,7 @@ def reply_to_email(
         routed_folder="Sent", routed_action="none",
     )
     PredictionRepository(db).save_prediction(pred)
-    smtp_ok = _send_smtp(original.sender, f"Re: {original.subject or ''}", req.body, sender)
+    smtp_ok = _send_smtp(original.sender, f"Re: {original.subject or ''}", req.body, sender, db, current_user.id)
     AuditLogRepository(db).log(
         email_id=email.id, user_id=current_user.id,
         event_type="email_replied",
@@ -452,9 +459,12 @@ def retrain(
 
 
 @router.post("/cleanup/spam", response_model=CleanupResponse)
-def cleanup():
-    moved = move_spam_to_trash()
-    deleted = cleanup_trash_all()
+def cleanup(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_user),
+):
+    moved = move_spam_to_trash(user_id=current_user.id)
+    deleted = cleanup_trash_all(user_id=current_user.id)
     return CleanupResponse(status="ok", moved_count=moved, deleted_count=deleted)
 
 
